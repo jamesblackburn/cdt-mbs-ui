@@ -11,10 +11,10 @@
 package org.eclipse.cdt.managedbuilder.internal.ui;
 
 import org.eclipse.cdt.managedbuilder.core.IConfiguration;
-import org.eclipse.cdt.managedbuilder.envvar.IEnvironmentVariableProvider;
-import org.eclipse.cdt.managedbuilder.internal.envvar.DefaultContextInfo;
-import org.eclipse.cdt.managedbuilder.internal.envvar.EnvironmentVariableProvider;
-import org.eclipse.cdt.managedbuilder.internal.envvar.IContextInfo;
+import org.eclipse.cdt.managedbuilder.internal.macros.BuildMacroProvider;
+import org.eclipse.cdt.managedbuilder.internal.macros.DefaultMacroContextInfo;
+import org.eclipse.cdt.managedbuilder.internal.macros.IMacroContextInfo;
+import org.eclipse.cdt.managedbuilder.macros.IBuildMacroProvider;
 import org.eclipse.cdt.managedbuilder.ui.properties.BuildPropertyPage;
 import org.eclipse.cdt.ui.dialogs.AbstractCOptionPage;
 import org.eclipse.cdt.ui.dialogs.ICOptionContainer;
@@ -30,23 +30,22 @@ import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Group;
 
 /**
- * When used in the BuildPropertyPage the displays the tab-folder that contains the following tabs:
- * 1. a tab containing configuration-specific variables
- * 2. a tab containing project-specific variables
+ * Whe used in the BuildPropertyPage the displays the tab-folder that contains the following tabs:
+ * 1. a tab containing configuration-specific macros
+ * 2. a tab containing project-specific macros
  * 
- * Otherwise displays a single EnvironmentBlock that contains
- * the workspace-specific and eclipse process environment variables
+ * Otherwise displays a single MacrosBlock that contains
+ * the workspace-specific, CDT/Eclipse installation and eclipse process environment macros
  *
- */
-public class EnvironmentSetBlock extends AbstractCOptionPage {
+ */public class MacrosSetBlock extends AbstractCOptionPage {
 	/*
 	 * String constants
 	 */
-	private static final String PREFIX = "EnvironmentSetBlock";	//$NON-NLS-1$
+	private static final String PREFIX = "MacrosSetBlock";	//$NON-NLS-1$
 	private static final String LABEL = PREFIX + ".label";	//$NON-NLS-1$
-	private static final String ENVIRONMENT_LABEL = LABEL + ".environment";	//$NON-NLS-1$
+	private static final String MACROS_LABEL = LABEL + ".macros";	//$NON-NLS-1$
 
-	private static final String ENVIRONMENT_GROUP_LABEL = LABEL + ".environment.group";	//$NON-NLS-1$
+	private static final String MACROS_GROUP_LABEL = LABEL + ".macros.group";	//$NON-NLS-1$
 
 	private static final String TAB = LABEL + ".tab";	//$NON-NLS-1$
 	private static final String TAB_CONFIGURATION = TAB + ".configuration";	//$NON-NLS-1$
@@ -54,58 +53,60 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	private static final String TAB_WORKSPACE = TAB + ".workspace";	//$NON-NLS-1$
 	private static final String TAB_ECLIPSE = TAB + ".eclipse";	//$NON-NLS-1$
 
-	private EnvironmentTabFolder fEnvTabs;
-	private EnvironmentBlock fEnvBlock;
+	private MacrosTabFolder fEnvTabs;
+	private MacrosBlock fEnvBlock;
 	
 	private ICOptionContainer fParentContainer;
-
-	private UIEnvVarProvider fEnvProvider = null;
 	
-	private class UIEnvVarContextInfo extends DefaultContextInfo{
-		public UIEnvVarContextInfo(Object context){
-			super(context);
+	private UIMacroProvider fMacroProvider;
+	
+	private class UIMacroContextInfo extends DefaultMacroContextInfo{
+		public UIMacroContextInfo(int type, Object data){
+			super(type,data);
 		}
 		
 		/* (non-Javadoc)
 		 * @see org.eclipse.cdt.managedbuilder.internal.macros.IMacroContextInfo#getNext()
 		 */
-		public IContextInfo getNext(){
-			IContextInfo info = super.getNext();
+		public IMacroContextInfo getNext(){
+			IMacroContextInfo info = super.getNext();
 			if(info != null){
-				EnvironmentBlock blocks[] = getAllBlocks();
+				MacrosBlock blocks[] = getAllBlocks();
 				for(int i = 0; i < blocks.length; i++){
-					if(blocks[i].getContext() == info.getContext())
+					if(blocks[i].getContextType() == info.getContextType() &&
+							blocks[i].getContextData() == info.getContextData())
 						return blocks[i].getContextInfo();
 				}
-				return new UIEnvVarContextInfo(info.getContext());
+				return new UIMacroContextInfo(info.getContextType(),info.getContextData());
 			}
 			return null;
 		}
 	}
-
+	
 	/*
-	 * The EnvironmentVariableProvider to be used in UI
+	 * The BuildMacroProvider to be used in UI
 	 * Unlike the default provider, this provider also contains
-	 * the user-modified variables that are not applied yet
+	 * the user-modified macros that are not applied yet
 	 */
-	private class UIEnvVarProvider extends EnvironmentVariableProvider{
-		protected IContextInfo getContextInfo(Object context){
-			EnvironmentBlock blocks[] = getAllBlocks();
+	private class UIMacroProvider extends BuildMacroProvider {
+		public IMacroContextInfo getMacroContextInfo(int contextType, Object contextData){
+			MacrosBlock blocks[] = getAllBlocks();
 			for(int i = 0; i < blocks.length; i++){
-				if(blocks[i].getContext() == context)
+				if(blocks[i].getContextType() == contextType &&
+						blocks[i].getContextData() == contextData)
 					return blocks[i].getContextInfo();
 			}
-			return new UIEnvVarContextInfo(context);
+			return new UIMacroContextInfo(contextType,contextData);
 		}
 	}
 
-	private class EnvironmentTabFolder extends TabFolderOptionBlock{
-		private EnvironmentBlock fFolderTabs[];
-		public EnvironmentTabFolder() {
+	private class MacrosTabFolder extends TabFolderOptionBlock{
+		private MacrosBlock fFolderTabs[];
+		public MacrosTabFolder() {
 			super(fParentContainer, false);
 		}
 		
-		public EnvironmentBlock[] getTabs(){
+		public MacrosBlock[] getTabs(){
 			return fFolderTabs;
 		}
 		
@@ -116,29 +117,30 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 			if(fParentContainer instanceof BuildPropertyPage) {
 				// the EnvironmentSetBlock is used whithing the Build Property Page
 				// create the project and configuration tabs
-				fFolderTabs = new EnvironmentBlock[2];
-				addTab(fFolderTabs[0] = new EnvironmentBlock(fParentContainer,
+				fFolderTabs = new MacrosBlock[2];
+				addTab(fFolderTabs[0] = new MacrosBlock(fParentContainer,
 						ManagedBuilderUIMessages.getResourceString(TAB_CONFIGURATION),
 						true,
 						true));
-				addTab(fFolderTabs[1] = new EnvironmentBlock(fParentContainer,
+				addTab(fFolderTabs[1] = new MacrosBlock(fParentContainer,
 						ManagedBuilderUIMessages.getResourceString(TAB_PROJECT),
 						true,
 						true));
 			}
-			else {
+/*			else {
 				// the EnvironmentSetBlock is used whithing the Build Preference Page
 				// create the workspace and eclipse environment tabs
-				fFolderTabs = new EnvironmentBlock[2];
-				addTab(fFolderTabs[0] = new EnvironmentBlock(fParentContainer,
+				fFolderTabs = new MacrosBlock[2];
+				addTab(fFolderTabs[0] = new MacrosBlock(fParentContainer,
 						ManagedBuilderUIMessages.getResourceString(TAB_WORKSPACE),
 						true,
 						true));
-				addTab(fFolderTabs[1] = new EnvironmentBlock(fParentContainer,
+				addTab(fFolderTabs[1] = new MacrosBlock(fParentContainer,
 						ManagedBuilderUIMessages.getResourceString(TAB_ECLIPSE),
 						false,
 						false));
 			}
+*/
 		}
 		
 		/*
@@ -151,35 +153,37 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 			if(fParentContainer instanceof BuildPropertyPage){
 				BuildPropertyPage page = (BuildPropertyPage)fParentContainer;
 				if(page.getSelectedConfiguration() != null)
-					fFolderTabs[1].setContext(page.getSelectedConfiguration().getManagedProject());
+					fFolderTabs[1].setContext(IBuildMacroProvider.CONTEXT_PROJECT,page.getSelectedConfiguration().getManagedProject());
 
-				fFolderTabs[0].setContext(page.getSelectedConfiguration());
+				fFolderTabs[0].setContext(IBuildMacroProvider.CONTEXT_CONFIGURATION,page.getSelectedConfiguration());
 				fFolderTabs[0].setParentContextInfo(fFolderTabs[1].getContextInfo());
 			}
-			else {
+/*			else {
 				fFolderTabs[1].setContext(null);
 				
 				fFolderTabs[0].setContext(ResourcesPlugin.getWorkspace());
 				fFolderTabs[0].setParentContextInfo(fFolderTabs[1].getContextInfo());
 			}
+*/
 		}
 		
 	}
 
 	
-	public EnvironmentSetBlock(ICOptionContainer parent){
-		super(ManagedBuilderUIMessages.getResourceString(ENVIRONMENT_LABEL));
+	public MacrosSetBlock(ICOptionContainer parent){
+		super(ManagedBuilderUIMessages.getResourceString(MACROS_LABEL));
 		super.setContainer(parent);
 		fParentContainer = parent;
+//		fOptionBlock = optionBlock;
 		
 		if(fParentContainer instanceof BuildPropertyPage)
-			fEnvTabs = new EnvironmentTabFolder();
+			fEnvTabs = new MacrosTabFolder();
 		else {
-			fEnvBlock = new EnvironmentBlock(fParentContainer,
+			fEnvBlock = new MacrosBlock(fParentContainer,
 					ManagedBuilderUIMessages.getResourceString(TAB_WORKSPACE),
 					true,
 					false);
-			fEnvBlock.displayParentVariables(true);
+			fEnvBlock.displayParentMacros(true);
 		}
 	}
 	
@@ -187,7 +191,7 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	 * @see org.eclipse.cdt.ui.dialogs.ICOptionPage#performApply(org.eclipse.core.runtime.IProgressMonitor)
 	 */
 	public void performApply(IProgressMonitor monitor) throws CoreException {
-		EnvironmentBlock tabs[] = getAllBlocks();
+		MacrosBlock tabs[] = getAllBlocks();
 		if(tabs != null){
 			for(int i = 0; i < tabs.length; i++)
 				tabs[i].performApply(monitor);
@@ -198,7 +202,7 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	 * @see org.eclipse.cdt.ui.dialogs.ICOptionPage#performDefaults()
 	 */
 	public void performDefaults() {
-		EnvironmentBlock tab = getSelectedBlock();
+		MacrosBlock tab = getSelectedBlock();
 		if(tab != null)
 			tab.performDefaults();
 	}
@@ -220,7 +224,7 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 		if(fEnvTabs != null){
 			Group group = new Group(parent, SWT.NONE);
 			group.setFont(parent.getFont());
-			group.setText(ManagedBuilderUIMessages.getResourceString(ENVIRONMENT_GROUP_LABEL));
+			group.setText(ManagedBuilderUIMessages.getResourceString(MACROS_GROUP_LABEL));
 			group.setLayoutData(new GridData(GridData.FILL_BOTH));
 			GridLayout gl = new GridLayout();
 			gl.marginHeight = 0;
@@ -241,7 +245,7 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	}
 	
 	public void updateValues(){
-		EnvironmentBlock tab = getSelectedBlock();
+		MacrosBlock tab = getSelectedBlock();
 
 		updateContexts();
 		if(tab != null)
@@ -249,14 +253,14 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	}
 	
 	public boolean isConfigSelectionAllowed(){
-		EnvironmentBlock block = getSelectedBlock();
+		MacrosBlock block = getSelectedBlock();
 		if(block != null)
-			return block.getContext() instanceof IConfiguration;
+			return block.getContextData() instanceof IConfiguration;
 		return false;
 	}
 	
 	public boolean isModified(){
-		EnvironmentBlock tabs[] = getAllBlocks();
+		MacrosBlock tabs[] = getAllBlocks();
 		for(int i = 0; i < tabs.length; i++){
 			if(tabs[i].isModified())
 				return true;
@@ -265,7 +269,7 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	}
 	
 	public void setModified(boolean modified){
-		EnvironmentBlock tabs[] = getAllBlocks();
+		MacrosBlock tabs[] = getAllBlocks();
 		for(int i = 0; i < tabs.length; i++){
 			tabs[i].setModified(modified);
 		}
@@ -274,21 +278,21 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 	/*
 	 * returns the selected environment block
 	 */
-	protected EnvironmentBlock getSelectedBlock(){
+	protected MacrosBlock getSelectedBlock(){
 		if(fEnvTabs != null)
-			return (EnvironmentBlock)fEnvTabs.getCurrentPage();
+			return (MacrosBlock)fEnvTabs.getCurrentPage();
 		return fEnvBlock;
 	}
 	
 	/*
 	 * returns all available environment blocks
 	 */
-	protected EnvironmentBlock[] getAllBlocks(){
+	protected MacrosBlock[] getAllBlocks(){
 		if(fEnvTabs != null)
 			return fEnvTabs.getTabs();
 		else if(fEnvBlock != null)
-			return new EnvironmentBlock[]{fEnvBlock};
-		return new EnvironmentBlock[0];
+			return new MacrosBlock[]{fEnvBlock};
+		return new MacrosBlock[0];
 	}
 	
 	/*
@@ -298,18 +302,18 @@ public class EnvironmentSetBlock extends AbstractCOptionPage {
 		if(fEnvTabs != null)
 			fEnvTabs.updateContexts();
 		else if(fEnvBlock != null)
-			fEnvBlock.setContext(ResourcesPlugin.getWorkspace());
+			fEnvBlock.setContext(IBuildMacroProvider.CONTEXT_WORKSPACE,ResourcesPlugin.getWorkspace());
 	}
 	
 	/*
-	 * returns the EnvironmentVariableProvider to be used in UI
+	 * returns the BuildMacroProvider to be used in UI
 	 * Unlike the default provider, the returned provider also contains
-	 * the user-modified variables that are not applied yet
+	 * the user-modified macros that are not applied yet
 	 */
-	public IEnvironmentVariableProvider getEnvironmentVariableProvider(){
-		if(fEnvProvider == null)
-			fEnvProvider = new UIEnvVarProvider();
-		return fEnvProvider;
+	public BuildMacroProvider getBuildMacroProvider(){
+		if(fMacroProvider == null)
+			fMacroProvider = new UIMacroProvider();
+		return fMacroProvider;
 	}
 	
 }
